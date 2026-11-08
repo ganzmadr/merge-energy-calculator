@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Merge Energy Calculator</title>
+<meta name="description" content="Fan-made calculator for Travel Town: how much energy an order needs, and which power boost costs the least.">
+<meta name="theme-color" content="#0f8f86" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1d1e" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Merge Energy">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<style>
+/* Layout: phone-first single column. The order (one card per item) → the energy answer with a one-tap boost switch → folded detail. A sticky bottom bar keeps the total in view. */
+:root {
+  --bg: #eef6f5;
+  --surface: #ffffff;
+  --fg: #1d3a3c;
+  --muted: #5d7a7b;
+  --line: #d3e4e2;
+  --accent: #0f8f86;
+  --accent-ink: #ffffff;
+  --accent-soft: #d6f0ec;
+  --sun: #f2a516;
+  --sun-soft: #fdf0d3;
+  --energy: #e8a300;
+  --danger: #b23a22;
+  --display: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Varela Round", system-ui, sans-serif;
+  --body: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1d1e; --surface: #172a2b; --fg: #e3f1ef; --muted: #93b0ae; --line: #2a4345;
+    --accent: #3cc7bb; --accent-ink: #062523; --accent-soft: #1d3d3b; --sun: #f5b941; --sun-soft: #3a3020; --energy: #f5c242; --danger: #f08a72;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1d1e; --surface: #172a2b; --fg: #e3f1ef; --muted: #93b0ae; --line: #2a4345;
+  --accent: #3cc7bb; --accent-ink: #062523; --accent-soft: #1d3d3b; --sun: #f5b941; --sun-soft: #3a3020; --energy: #f5c242; --danger: #f08a72;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px calc(96px + env(safe-area-inset-bottom, 0px));
+}
+main { max-width: 560px; margin: 0 auto; display: grid; gap: 16px; }
+h1 { font: 600 1.85rem/1.15 var(--display); margin: 0; text-wrap: balance; }
+h2 { font: 600 1.2rem/1.25 var(--display); margin: 0; text-wrap: balance; }
+h3 { font: 600 1rem var(--display); margin: 0; }
+p { margin: 0; }
+.lede { color: var(--muted); margin-top: 6px; }
+.muted { color: var(--muted); }
+.small { font-size: .85rem; }
+b { font-weight: 800; }
+button, input, select { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.lbl { display: block; font-size: .78rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+
+/* order items */
+.items { display: grid; gap: 12px; }
+.item-head { display: flex; align-items: center; gap: 10px; }
+.item-no { flex: none; width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; font: 600 1rem var(--display); }
+.item-name { flex: 1; min-width: 0; border: 0; border-bottom: 1.5px dashed var(--line); background: transparent; font: 600 1.1rem var(--display); padding: 2px 0; }
+.item-name::placeholder { color: var(--muted); font-weight: 500; }
+.remove { border: 0; background: none; color: var(--muted); font-weight: 800; font-size: .85rem; cursor: pointer; padding: 4px; }
+.pair { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 10px; }
+.card > * { min-width: 0; }
+.step { display: grid; grid-template-columns: 44px 1fr 44px; align-items: center; background: var(--accent-soft); border-radius: 12px; padding: 4px; }
+.step button { height: 42px; border: 0; border-radius: 9px; background: var(--surface); color: var(--accent); font: 600 1.4rem var(--display); cursor: pointer; }
+.step button:active { transform: scale(.95); }
+.step input { min-width: 0; width: 100%; border: 0; background: transparent; text-align: center; font: 600 1.5rem/1 var(--display); -moz-appearance: textfield; }
+input[type=number]::-webkit-outer-spin-button, input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.levels { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.levels button { height: 42px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--surface); font: 600 1.1rem var(--display); cursor: pointer; position: relative; }
+.levels button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.levels .dot { position: absolute; top: 4px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--sun); }
+
+/* board tiles */
+.board-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.board { display: grid; grid-template-columns: repeat(auto-fill, minmax(54px, 1fr)); gap: 6px; }
+.tile { position: relative; height: 56px; border: 1.5px dashed var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; display: grid; place-items: center; padding: 0; }
+.tile .lv { font: 600 .95rem var(--display); color: var(--muted); }
+.tile .ct { display: none; }
+.tile.has { border-style: solid; border-color: var(--accent); background: var(--accent-soft); }
+.tile.has .lv { position: absolute; top: 3px; left: 7px; font-size: .72rem; }
+.tile.has .ct { display: block; font: 600 1.35rem var(--display); color: var(--fg); font-variant-numeric: tabular-nums; margin-top: 8px; }
+.tile.goal .lv { color: var(--sun); }
+.tile .minus { display: none; position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; border-radius: 50%; border: 0; background: var(--fg); color: var(--surface); font: 700 1rem/1 var(--body); cursor: pointer; }
+.tile.has .minus { display: grid; place-items: center; }
+.board-note { font-size: .85rem; color: var(--muted); }
+.board-note b { color: var(--accent); }
+.more { border-top: 1px dashed var(--line); padding-top: 10px; }
+.more summary { cursor: pointer; font-size: .9rem; font-weight: 800; color: var(--accent); list-style: none; }
+.more summary::-webkit-details-marker { display: none; }
+.more[open] summary { margin-bottom: 10px; }
+.pick select { width: 100%; border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px; font-weight: 700; background: var(--surface); color: var(--fg); }
+.chips button .muted { font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips button { border: 1.5px solid var(--line); background: var(--surface); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: .9rem; cursor: pointer; }
+.chips button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.add { border: 2px dashed var(--line); background: transparent; border-radius: 16px; padding: 14px; font: 600 1.05rem var(--display); color: var(--accent); cursor: pointer; }
+.add:hover { background: var(--accent-soft); }
+
+/* result */
+.result { background: var(--accent); color: var(--accent-ink); border: 0; gap: 12px; scroll-margin-top: 16px; }
+.result .eyebrow { font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+.result .total { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.result .total .n { font: 600 3.2rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.result .total .u { font: 600 1.2rem var(--display); }
+.result .sub { font-size: .92rem; opacity: .95; }
+.pw { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.pw button { border: 0; border-radius: 12px; background: rgba(255,255,255,.16); color: var(--accent-ink); padding: 8px 2px 7px; cursor: pointer; display: grid; gap: 1px; justify-items: center; position: relative; }
+.pw button .x { font: 600 1.15rem var(--display); }
+.pw button .e { font-size: .78rem; font-weight: 800; font-variant-numeric: tabular-nums; opacity: .9; }
+.pw button[aria-pressed="true"] { background: var(--surface); color: var(--fg); }
+.pw button:disabled { opacity: .45; cursor: default; }
+.pw button .best { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: var(--sun); color: #1d1a10; border-radius: 999px; padding: 0 7px; font: 800 .62rem/1.6 var(--body); letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+.breakdown { display: grid; gap: 6px; background: rgba(0,0,0,.12); border-radius: 12px; padding: 10px 12px; }
+.bd { display: flex; justify-content: space-between; gap: 10px; font-size: .92rem; }
+.bd span:last-child { font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.trust { display: flex; gap: 8px; align-items: flex-start; font-size: .85rem; font-weight: 700; }
+.trust i { width: 10px; height: 10px; border-radius: 50%; background: var(--accent-ink); flex: none; margin-top: 5px; }
+.trust.weak i { background: transparent; border: 2px solid var(--accent-ink); }
+.plan { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; font-size: .85rem; }
+.plan button { border: 1.5px solid rgba(255,255,255,.4); background: transparent; color: var(--accent-ink); border-radius: 999px; padding: 3px 10px; font-weight: 700; cursor: pointer; }
+.plan button[aria-pressed="true"] { background: var(--accent-ink); color: var(--accent); border-color: var(--accent-ink); }
+.have { display: flex; align-items: center; justify-content: space-between; gap: 10px; background: rgba(0,0,0,.12); border-radius: 12px; padding: 8px 10px 8px 12px; }
+.have label { font-weight: 800; font-size: .92rem; }
+.have input { width: 110px; border: 0; border-radius: 9px; padding: 7px 10px; text-align: center; font: 600 1.2rem var(--display); background: var(--surface); color: var(--fg); -moz-appearance: textfield; }
+.haves { display: grid; gap: 6px; }
+.hint-lv { display: block; font-size: .78rem; font-weight: 600; opacity: .85; }
+.lockhint { font-size: .82rem; opacity: .9; margin-top: 6px; }
+.result.done .have { background: var(--accent-soft); }
+.result.done { background: var(--surface); color: var(--fg); border: 1px solid var(--line); }
+
+/* sticky bar */
+.sticky { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; background: var(--fg); color: var(--surface);
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px)); }
+.sticky button { width: 100%; max-width: 560px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; gap: 10px; border: 0; background: none; color: inherit; cursor: pointer; padding: 0; }
+.sticky .s1 { font: 600 1.35rem var(--display); font-variant-numeric: tabular-nums; }
+.sticky .s2 { font-size: .85rem; font-weight: 700; opacity: .85; text-align: right; }
+
+/* folds */
+details.fold > summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::after { content: "+"; font: 600 1.4rem/1 var(--display); color: var(--accent); }
+details.fold[open] > summary::after { content: "−"; }
+.fold-body { display: grid; gap: 12px; margin-top: 12px; }
+.rules { display: grid; gap: 10px; }
+.rule { display: grid; grid-template-columns: 40px 1fr; gap: 10px; align-items: start; font-size: .95rem; }
+.rule .ic { width: 40px; height: 34px; border-radius: 10px; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font: 600 .9rem var(--display); }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th, td { padding: 7px 6px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 800; }
+.tag { display: inline-block; font-size: .7rem; font-weight: 800; border-radius: 999px; padding: 1px 8px; }
+.tag.m { background: var(--accent); color: var(--accent-ink); }
+.tag.o { background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent); }
+.tag.e { background: var(--sun-soft); border: 1px dashed var(--sun); }
+.steps { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: .92rem; }
+.tests { display: grid; gap: 8px; }
+.test { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: grid; gap: 2px; }
+.test .top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.test .name { font-weight: 800; }
+.test .meta { color: var(--muted); font-size: .85rem; margin-right: auto; }
+.test .counts { font-size: .9rem; font-variant-numeric: tabular-nums; }
+.del { border: 0; background: none; color: var(--danger); font-weight: 800; font-size: .82rem; cursor: pointer; padding: 2px 4px; }
+.form { display: grid; gap: 12px; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.form label { display: block; font-size: .8rem; font-weight: 800; color: var(--muted); margin-bottom: 4px; }
+.form input[type=text], .form select, .cnt input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; font-weight: 700; background: var(--surface); }
+.cnts { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.cnt input { text-align: center; font-family: var(--display); font-size: 1.1rem; -moz-appearance: textfield; }
+.btn { border: 0; background: var(--accent); color: var(--accent-ink); font: 600 1rem var(--display); padding: 11px 18px; border-radius: 12px; cursor: pointer; justify-self: start; }
+.btn:disabled { opacity: .5; cursor: default; }
+.status { font-size: .88rem; color: var(--muted); }
+.status.err { color: var(--danger); }
+.status.ok { color: var(--accent); font-weight: 700; }
+@media (max-width: 400px) {
+  .step { grid-template-columns: 38px 1fr 38px; }
+  .result .total .n { font-size: 2.7rem; }
+  .row2 { grid-template-columns: 1fr; }
+}
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; padding-top: calc(24px + env(safe-area-inset-top, 0px)); }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
+h1, h2, h3, .item-no, .step input, .levels button, .tile .lv, .tile.has .ct, .result .total .n, .result .total .u, .pw button .x, .sticky .s1, .rule .ic, .btn { font-weight: 700; }
+.install { display: flex; gap: 12px; align-items: flex-start; background: var(--sun-soft); border: 1px solid var(--sun); border-radius: 14px; padding: 12px 14px; font-size: .92rem; }
+.install p { flex: 1; }
+.install button { border: 0; background: none; font-weight: 800; color: var(--muted); cursor: pointer; padding: 2px 4px; }
+.share-ic { display: inline-block; width: 14px; height: 16px; vertical-align: -2px; }
+.io { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn.ghost { background: var(--accent-soft); color: var(--accent); }
+.test .tag-b { font-size: .7rem; font-weight: 800; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 0 7px; }
+footer { max-width: 560px; margin: 8px auto 0; font-size: .8rem; color: var(--muted); display: grid; gap: 6px; }
+footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<main>
+  <div class="install" id="install" hidden>
+    <p><b>Add it to your Home Screen</b> to use it like an app, even offline: tap <svg class="share-ic" viewBox="0 0 14 16" aria-label="Share" role="img"><path d="M7 1v9M3.5 4.5 7 1l3.5 3.5M2 7.5v7h10v-7" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg> Share in Safari, then <b>Add to Home Screen</b>.</p>
+    <button type="button" id="installClose" aria-label="Hide this tip">✕</button>
+  </div>
+  <header>
+    <h1>How much energy for this order?</h1>
+    <p class="lede">Add the items your order asks for and what's already on your board. You'll get the energy you need and the power boost that costs the least.</p>
+  </header>
+
+  <section aria-label="Order items" class="items" id="items"></section>
+  <button type="button" class="add" id="addItem">+ Add another item to the order</button>
+
+  <section class="card result" id="result" aria-live="polite">
+    <span class="eyebrow" id="rEyebrow">Energy needed</span>
+    <div class="total"><span class="n" id="rTotal">0</span><span class="u">energy</span></div>
+    <p class="sub" id="rSub"></p>
+    <div class="haves">
+      <div class="have">
+        <label for="energyNow">Your energy right now</label>
+        <input id="energyNow" type="number" inputmode="numeric" min="0" max="99999" placeholder="e.g. 100">
+      </div>
+      <div class="have">
+        <label for="playerLv">Your player level <span class="hint-lv">the number on your avatar</span></label>
+        <input id="playerLv" type="number" inputmode="numeric" min="1" max="999" placeholder="e.g. 61">
+      </div>
+    </div>
+    <div id="rPwWrap">
+      <span class="lbl" style="color:inherit;opacity:.85">Power boost · tap to switch</span>
+      <div class="pw" id="pw" role="group" aria-label="Power boost"></div>
+      <p class="lockhint" id="lockHint"></p>
+    </div>
+    <div class="breakdown" id="rBreak"></div>
+    <div class="plan" id="plan"><span>Plan for:</span>
+      <button type="button" data-plan="safe">Safe</button>
+      <button type="button" data-plan="avg">Average luck</button>
+    </div>
+    <p class="trust" id="rTrust"><i></i><span></span></p>
+  </section>
+
+  <section class="card">
+    <details class="fold">
+      <summary><h2>How the numbers work</h2></summary>
+      <div class="fold-body">
+        <div class="rules">
+          <div class="rule"><span class="ic">2→1</span><p><b>Two items merge into one</b> of the next level, so every level doubles the cost. A level 10 item takes 512 level 1 items.</p></div>
+          <div class="rule"><span class="ic">x8</span><p><b>The power boost sets which level the producer makes:</b> x1 makes level 1, x2 level 2, x4 level 3, x8 level 4, x16 level 5. Each tap costs as much energy as the boost. x2 unlocks at player level 20 and x4 at 40. x8 can only be switched on with 200 energy and x16 with 400, but once on they keep working as your energy drops, but energy refills by itself (1 every 2 minutes) only up to 100, so most of the time you'll use x1, x2 or x4.</p></div>
+          <div class="rule"><span class="ic">+1</span><p><b>Some taps give a bonus item</b> one or more levels higher. That's where you save energy. Bonus chances grow with the producer's level and with bigger boosts.</p></div>
+          <div class="rule"><span class="ic">⚑</span><p><b>Items below the boost level only help in pairs.</b> With x8, a single level 2 item on your board can't be used, so the calculator leaves it out.</p></div>
+          <div class="rule"><span class="ic">Safe</span><p><b>Safe</b> ignores rare lucky jumps of 3 or more levels. <b>Average luck</b> counts them, so it's cheaper but less certain.</p></div>
+        </div>
+        <div><h3 id="oddsH">Bonus chances at <span id="oddsPw">x8</span></h3><p class="muted small">From your tests.</p></div>
+        <div class="table-wrap">
+          <table aria-labelledby="oddsH">
+            <thead><tr><th>Producer</th><th>Normal</th><th>+1</th><th>+2</th><th>+3 or more</th><th>Source</th></tr></thead>
+            <tbody id="oddsTable"></tbody>
+          </table>
+        </div>
+        <p class="muted small"><span class="tag m">tested</span> tested at this level and boost · <span class="tag o">other boost</span> tested at this level with a different boost · <span class="tag e">estimate</span> filled in from the levels around it.</p>
+      </div>
+    </details>
+  </section>
+
+  <section class="card">
+    <details class="fold" id="logFold">
+      <summary><h2>Your test data <span class="muted small" id="logCount" style="font-family:var(--body);font-weight:700"></span></h2></summary>
+      <div class="fold-body">
+        <p class="muted small">Tests make the energy numbers more accurate. Producer levels with a dot already have test data. Built-in tests come with the app; the ones you add are saved on this device.</p>
+        <div class="io">
+          <button type="button" class="btn ghost" id="exportBtn">Export my tests</button>
+          <button type="button" class="btn ghost" id="importBtn">Import tests</button>
+          <button type="button" class="btn ghost" id="restoreBtn" hidden>Show hidden built-in tests</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </div>
+        <p class="status" id="dbStatus" aria-live="polite" hidden></p>
+        <div class="tests" id="tests"></div>
+        <details class="fold" id="addFold" style="border-top:1px dashed var(--line);padding-top:12px">
+          <summary><h3 style="color:var(--accent)">Add a new test</h3></summary>
+          <div class="fold-body">
+            <ol class="steps">
+              <li>Clear some space on the board and pick a power boost.</li>
+              <li>Tap the producer 20–30 times.</li>
+              <li>Before merging anything, count the new items by level.</li>
+            </ol>
+            <form class="form" id="addForm">
+              <div><label for="fName">Producer name</label><input id="fName" type="text" placeholder="e.g. Lion Seat" maxlength="40" required></div>
+              <div class="row2">
+                <div><label for="fLevel">Producer level</label><select id="fLevel"></select></div>
+                <div><label for="fPower">Power boost</label><select id="fPower"></select></div>
+              </div>
+              <div>
+                <span class="small muted" style="font-weight:800">How many items of each level did you get?</span>
+                <div class="cnts" id="cnts" style="margin-top:6px"></div>
+                <p class="muted small" style="margin-top:6px">"Other item" is anything from the producer's second item line. A gift box ("WOW!") counts as the level of the item inside it.</p>
+              </div>
+              <button class="btn" type="submit" id="fSave">Save test</button>
+              <p class="status" id="fMsg" aria-live="polite"></p>
+            </form>
+          </div>
+        </details>
+      </div>
+    </details>
+  </section>
+</main>
+<footer>
+  <p>A fan-made tool. Not affiliated with, endorsed by or connected to Travel Town or its developer. All game names belong to their owners.</p>
+  <p>Producer and item line data from the <a href="https://travel-town-mobile-game.fandom.com/wiki/Items" target="_blank" rel="noopener">Travel Town Wiki</a> (CC BY-SA). Bonus chances from player test taps. Your orders and tests stay on this device.</p>
+  <p id="ver">Version 1.0</p>
+</footer>
+
+<div class="sticky" id="sticky"><button type="button" id="stickyBtn"><span class="s1" id="sTotal">0 ⚡</span><span class="s2" id="sSub"></span></button></div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const fmt = (n) => Math.round(n).toLocaleString();
+  const pct = (p) => { const v = Math.round(p * 1000) / 10; return (v >= 10 ? Math.round(v) : v) + "%"; };
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const JMAX = 10; // biggest bonus jump we record (+1 … +10 levels)
+  const POWERS = [1, 2, 4, 8, 16], LEVELS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], REFILL_MIN = 2, MAXT = 16;
+  // Producers, their own max level and their item lines with the number of levels (Travel Town wiki, "Items" page).
+  const PRODUCERS = [{"p":"Adoption Certificate","max":7,"lines":[["Cat Tree",12],["Cat Toy",9]]},{"p":"Amazing Airplanes","max":7,"lines":[["Trip Memories",12],["Worldwide Souvenirs",9],["Security Screening",8]]},{"p":"Amazing Arena","max":7,"lines":[["Gymnastic Gear",12],["Swimming Competition",9],["Boxing Match",8]]},{"p":"Arabian Gardens","max":9,"lines":[["Palm Tree",7],["Arabian Fountain",9],["Woven Wonders",8]]},{"p":"Arcade Controllers","max":7,"lines":[["Arcade Games",13],["Video Game Characters",10]]},{"p":"Archaeology Site","max":7,"lines":[["Relic Revelation",13],["Mosaic Memories",10]]},{"p":"Art Gallery Admission","max":7,"lines":[["Pretty Paintings",10]]},{"p":"Art Supplies","max":7,"lines":[["Paint Supplies",13],["Carving Tools",10]]},{"p":"Bag","max":9,"lines":[["Instant Cameras",5],["Instant Pictures",9]]},{"p":"Baking Oven","max":5,"lines":[["Bread and Pastry",12]]},{"p":"Ballet Show","max":7,"lines":[["Fluffy Ballerinas",10]]},{"p":"Barber Shop","max":7,"lines":[["Barber's Basics",12],["Crazy Coloring",9],["Bold Beards",8]]},{"p":"Barn Vehicles","max":7,"lines":[["Wool Wonders",6],["Woolly Pals",6],["Dairy Delights",5],["Cheesy Bites",5]]},{"p":"Beach Bar Menu","max":6,"lines":[["Refreshing Drink",12],["Tapa",9]]},{"p":"Beach Bucket","max":9,"lines":[["Shells",15],["Sand Castles",5]]},{"p":"Boat","max":6,"lines":[["Diving Gear",6],["Fish",10]]},{"p":"Botanical Garden","max":7,"lines":[["Incredible Insects",13],["Bonsai Tree",10]]},{"p":"Builder's Area","max":7,"lines":[["Chopped Wood",7],["Wooden Toys",9],["Wooden Puzzle",8]]},{"p":"Carousel Seat","max":7,"lines":[["Funfair Sweet",12]]},{"p":"Circus Train","max":7,"lines":[["Magician Accessories",12],["Clown Act",9]]},{"p":"Coffee Machine","max":7,"lines":[["Takeaway Coffee",12],["Coffee Cup",9]]},{"p":"Comic Books","max":7,"lines":[["Superhero Story",7],["Icy Style",9],["Superhero Protection",8]]},{"p":"Cozy Camping","max":7,"lines":[["Hiker's Gear",7],["Camping Activities",9],["Bird Watching",8]]},{"p":"DJ Station","max":7,"lines":[["Disco Party",13],["Club Drinks",10]]},{"p":"Docks","max":7,"lines":[["Beautiful Boats",13],["Famous Landmarks",10]]},{"p":"Duck-a-Duck Pool","max":6,"lines":[["Hook-a-Duck",6],["Hooked Toys",10]]},{"p":"Farm Enclosures","max":7,"lines":[["Farm Flowers",12],["Butterfly Life Cycle",9],["Strawberry Candy",8]]},{"p":"First Aid Kit","max":7,"lines":[["Pharmacy Products",13],["Medical Accessories",10]]},{"p":"Fish Tank","max":7,"lines":[["Fish Friends",10],["Coral Kingdom",8]]},{"p":"Fishing Tools","max":6,"lines":[["Seaweed Products",12],["Zodiac Pendants",9]]},{"p":"Food Truck","max":7,"lines":[["Bavarian Bites",12],["Fair Flavors",9],["Delightful Drinks",8]]},{"p":"Gas Station","max":7,"lines":[["Car Collection",7],["Air Fresheners",9],["Road Signs",8]]},{"p":"Ghostly Graveyard","max":7,"lines":[["Cursed Doll",10]]},{"p":"Grocery Store Coupons","max":7,"lines":[["Hygiene Product",10]]},{"p":"Gumball Machines","max":7,"lines":[["Sweet Candies",12],["Chocolates",9],["Sprinkle Cakes",8]]},{"p":"Gym Membership","max":7,"lines":[["Workout Wear",13],["Gym Time",10]]},{"p":"Harvest Storage","max":7,"lines":[["Olive Press",7],["Chocolate Treats",7],["Corn Delicacies",7]]},{"p":"Herb Sack","max":9,"lines":[["Herbalist Tools",6],["Lavender Luxury",8],["Essential Oils",10],["Tea Time",6]]},{"p":"Honey Hive","max":7,"lines":[["Honey Food",12]]},{"p":"Hospital Lab","max":7,"lines":[["Hospital Gear",7],["White Cells",9],["Viral Virus",8]]},{"p":"Hotel Check In","max":7,"lines":[["Hotel Room",13],["Hotel Pool",10]]},{"p":"Ice Cream Freezer","max":6,"lines":[["Ice Cream",10]]},{"p":"Jewelry Display","max":10,"lines":[["Jewelry",9]]},{"p":"Light Source","max":6,"lines":[["Naval Miniatures",10]]},{"p":"Mailbox","max":7,"lines":[["Post Packages",13],["Carrier Pigeon",10]]},{"p":"Membership Perks","max":7,"lines":[["Board Games",12],["Game Rules",9],["Game Pieces",8]]},{"p":"Mirrors","max":7,"lines":[["Beauty Products",13],["Stylish Wigs",10]]},{"p":"Museum Guide","max":7,"lines":[["Paintings",13],["Sculpture",10]]},{"p":"New Age Books","max":7,"lines":[["Incense",10]]},{"p":"Olive Orchard","max":7,"lines":[["Olives",13],["Olive Press",10]]},{"p":"Orchard Delivery","max":7,"lines":[["Apple Desserts",12],["Resin Art",9],["Farm Biofuel",8]]},{"p":"Packing Station","max":7,"lines":[["Graphic Design",7],["Robo-Parts",9],["3D Plants",8]]},{"p":"Park Gate","max":7,"lines":[["Park Topiaries",13],["Park Playground",10]]},{"p":"Pet Transport","max":7,"lines":[["Pet Grooming",7],["Corgi Makeover",9],["Owl Makeover",8]]},{"p":"Picnic Basket","max":9,"lines":[["Picnic Food",14],["Cutlery Tools",5]]},{"p":"Pizza Kitchen","max":6,"lines":[["Pizza Dough",7],["Pizza Delivery",9],["Fish Dish",8]]},{"p":"Police Comms","max":7,"lines":[["Police Props",12],["Crime Scene",9],["Police Puppet",8]]},{"p":"Popcorn Stand","max":7,"lines":[["Movie Magic",13],["Cinema Snacks",10]]},{"p":"Pottery Shop","max":7,"lines":[["Pottery",10],["Colorful Tile",13]]},{"p":"Racing Track","max":7,"lines":[["Racing Cars",13],["Car Race",10]]},{"p":"Recycling Bin","max":7,"lines":[["Plastic Recycling",13],["Metal Recycling",10]]},{"p":"Rescue Rides","max":7,"lines":[["Firefighter Attire",10]]},{"p":"Roller Coaster Ticket Booth","max":7,"lines":[["Roller Coaster Merchandise",12],["Roller Coaster Wagon",9]]},{"p":"Rug Loom","max":7,"lines":[["Radiant Rug",7],["Puppy's Place",9],["Movie Night",8]]},{"p":"Seeds","max":8,"lines":[["Gardening Tools",6],["Indoor Plants",10]]},{"p":"Sewing Studio","max":7,"lines":[["Clothing",12],["Sewing Tools",9]]},{"p":"Sheet Music","max":7,"lines":[["Classical Instruments",10]]},{"p":"Skating Ramps","max":7,"lines":[["Skating Gear",12],["Graffiti Gear",3],["Street Art",7]]},{"p":"Skating Rink","max":7,"lines":[["Hockey Team",10]]},{"p":"Spa Facilities","max":7,"lines":[["Spa Essentials",10]]},{"p":"Spice Collection","max":7,"lines":[["Whole Spices",13],["Spiced Sauces",10]]},{"p":"Stall Scales","max":7,"lines":[["Deli Meats",13],["Seafood Style",10]]},{"p":"Stationery Display","max":7,"lines":[["Writing Accessories",6],["Fantasy Book",10]]},{"p":"Store Catalog","max":7,"lines":[["Cash Register",13],["Home Appliances",10]]},{"p":"Surf Shop","max":8,"lines":[["Surf Gear",12]]},{"p":"Tattoo Station","max":7,"lines":[["Tattoo Prep",7],["Nautical Tattoos",9],["Beautiful Piercings",8]]},{"p":"Telescopes","max":7,"lines":[["Space Expedition",12],["Alien Life",9],["Astronomy Accessories",8]]},{"p":"Thai Cookware","max":7,"lines":[["Thai Dishes",13],["Thai Desserts",10]]},{"p":"Town Bank","max":7,"lines":[["Glowing Gold",10]]},{"p":"Town Castle","max":7,"lines":[["Medieval Hats",13],["Painted Glass",10]]},{"p":"Town Ranch","max":7,"lines":[["Ranch Animals",13],["Knitted Creations",10]]},{"p":"Town Theatre","max":7,"lines":[["Theater Production",12],["Wizard of Oz",9],["Genie Musical",8]]},{"p":"Toy Box","max":7,"lines":[["Robot Toys",13],["Building Set",10]]},{"p":"TV Tower","max":7,"lines":[["TV Studio",10]]},{"p":"University Bag","max":7,"lines":[["Student Essentials",7],["University Graduation",9],["Video Game",8]]},{"p":"Utensils","max":7,"lines":[["Desserts",12],["Fish Dishes",9],["Salads",8]]},{"p":"Vegetable Stall","max":7,"lines":[["Fresh Vegetables",12],["Mushrooms",9]]},{"p":"Vine","max":7,"lines":[["Grape",10]]},{"p":"Vintage Closet","max":7,"lines":[["Vintage Vibes",12],["Porcelain Dolls",9],["Clock Collection",8]]},{"p":"Wicker Plant","max":7,"lines":[["Straw Accessories",12],["Wicker Goods",9],["Wicker Furniture",8]]}];
+  // In-game names seen in tests (producers change their name as they level up) -> wiki name.
+  const ALIASES = [["Ticket Booth", "Roller Coaster Ticket Booth"], ["Ticket Desk", "Roller Coaster Ticket Booth"], ["Small Ticket Point", "Roller Coaster Ticket Booth"],
+    ["Lion Seat", "Carousel Seat"], ["Giraffe Seat", "Carousel Seat"], ["Golden Bones Certificate Frame", "Adoption Certificate"], ["Vegetable Cart", "Vegetable Stall"],
+    ["Illuminated Ticket Booth", "Roller Coaster Ticket Booth"], ["Duck Bucket", "Duck-a-Duck Pool"], ["Dragon Coaster Entrance", "Roller Coaster Ticket Booth"]];
+  const prodOf = (it) => PRODUCERS.find((x) => x.p === it.prod) || null;
+  const lineOf = (it) => { const pr = prodOf(it); return pr && it.line !== null && it.line !== undefined ? pr.lines[it.line] || null : null; };
+  const maxTarget = (it) => { const l = lineOf(it); return l ? l[1] : MAXT; };
+  const maxLevel = (it) => { const pr = prodOf(it); return pr ? pr.max : 7; };
+  const itemLabel = (it, i) => it.name || (lineOf(it) ? lineOf(it)[0] : "Item " + (i + 1));
+  const num = (v) => Math.max(0, Number(v) || 0);
+  const SHARES = [[100, "No"], [85, "Sometimes"], [50, "About half the time"]];
+
+  let state = { plan: "safe", pin: null, energy: null, player: null, items: [] };
+  // x8 needs 200 energy and x16 needs 400 (Travel Town wiki, "Boosters"). Stored as "more than" values.
+  const UNLOCK = { 8: 199, 16: 399 };
+  // Player level needed for each boost (Travel Town wiki, "Leveling Up"): x2 at 20, x4 at 40. x8 and x16 come after x4.
+  const PLAYER_MIN = { 1: 1, 2: 20, 4: 40, 8: 40, 16: 40 };
+  try { const s = JSON.parse(localStorage.getItem("mepOrder") || "null"); if (s && Array.isArray(s.items)) state = Object.assign(state, s); } catch (e) {}
+  if (!state.items.length) state.items = [newItem()];
+  const save = () => { try { localStorage.setItem("mepOrder", JSON.stringify(state)); } catch (e) {} };
+  function newItem() { const last = state.items[state.items.length - 1]; return { id: Math.random().toString(36).slice(2, 9), name: "", prod: last ? last.prod : null, line: null, target: last ? last.target : 8, qty: 1, level: last ? last.level : 7, share: last ? last.share : 100, board: {} }; }
+
+  let tests = [], canWrite = true, armedDelete = null;
+
+  // ---------- odds from tests ----------
+  function pool(filter) {
+    const out = {};
+    LEVELS.forEach((L) => {
+      let n = 0, j = new Array(JMAX).fill(0), other = 0;
+      tests.forEach((r) => {
+        if (Number(r.level) !== L || !filter(r)) return;
+        n += num(r.normal); other += num(r.other);
+        for (let k = 0; k < JMAX; k++) j[k] += num(r["j" + (k + 1)]);
+      });
+      const N = n + j.reduce((a, b) => a + b, 0);
+      if (N > 0) out[L] = { taps: N + other, p: j.map((x) => x / N) };
+    });
+    return out;
+  }
+  let oddsCache = {};
+  function oddsFor(P) {
+    if (oddsCache[P]) return oddsCache[P];
+    const byQ = {}; POWERS.forEach((Q) => { byQ[Q] = pool((r) => Number(r.power) === Q); });
+    const out = {}, Z = new Array(JMAX).fill(0);
+    LEVELS.forEach((L) => {
+      if (byQ[P][L]) { out[L] = { kind: "m", taps: byQ[P][L].taps, p: byQ[P][L].p }; return; }
+      // Same producer level, other boosts: use the nearest tested boost, or blend the two around this one.
+      const qs = POWERS.filter((Q) => byQ[Q][L]);
+      if (!qs.length) return;
+      const lo = qs.filter((Q) => Q < P).pop(), hi = qs.find((Q) => Q > P);
+      let p, taps;
+      if (lo && hi) { const f = (Math.log2(P) - Math.log2(lo)) / (Math.log2(hi) - Math.log2(lo)); p = byQ[lo][L].p.map((x, k) => x + (byQ[hi][L].p[k] - x) * f); taps = byQ[lo][L].taps + byQ[hi][L].taps; }
+      else { const q = lo || hi; p = byQ[q][L].p.slice(); taps = byQ[q][L].taps; }
+      out[L] = { kind: "o", taps, p };
+    });
+    const known = LEVELS.filter((L) => out[L]);
+    LEVELS.forEach((L) => {
+      if (out[L]) return;
+      const lo = known.filter((m) => m < L).pop(), hi = known.find((m) => m > L);
+      let p;
+      if (hi === undefined) p = lo !== undefined ? out[lo].p.slice() : Z.slice();
+      else if (lo === undefined && L === 1) p = Z.slice();
+      else { const loL = lo !== undefined ? lo : 1, loP = lo !== undefined ? out[lo].p : Z, f = (L - loL) / (hi - loL); p = loP.map((x, k) => x + (out[hi].p[k] - x) * f); }
+      out[L] = { kind: "e", p };
+    });
+    return (oddsCache[P] = out);
+  }
+
+  // ---------- the maths for one order item at one boost ----------
+  // Everything is counted in "level 1 item" units: a level L item is worth 2^(L-1).
+  function plan(it, P) {
+    const b = Math.log2(P) + 1, t = it.target;
+    if (b > t) return null; // this boost makes items above the target
+    const goal = it.qty * Math.pow(2, t - 1);
+    // Board items below the boost level only count once they pair up into level b.
+    let carry = 0;
+    for (let L = 1; L < b; L++) carry = Math.floor(((it.board[L] || 0) + carry) / 2);
+    let have = carry * Math.pow(2, b - 1);
+    for (let L = b; L <= t; L++) have += (it.board[L] || 0) * Math.pow(2, L - 1);
+    let haveAll = 0; for (let L = 1; L <= t; L++) haveAll += (it.board[L] || 0) * Math.pow(2, L - 1);
+    have = Math.min(have, goal);
+    const need = goal - have;
+    const src = oddsFor(P)[it.level], p = src.p.slice();
+    if (state.plan === "safe") for (let k = 2; k < p.length; k++) p[k] = 0;
+    const base = 1 - p.reduce((a, x) => a + x, 0);
+    const cap = Math.pow(2, t - 1); // an item above the target can't be split back down
+    let per = base * Math.pow(2, b - 1);
+    p.forEach((x, k) => { per += x * Math.min(Math.pow(2, b + k), cap); });
+    per *= it.share / 100;
+    const taps = need === 0 ? 0 : Math.ceil(need / per);
+    return { P, b, need, taps, energy: taps * P, have, haveAll: Math.min(haveAll, goal), goal, src, wasted: Math.min(haveAll, goal) - have };
+  }
+
+  // ---------- order item cards ----------
+  function renderItems() {
+    const box = $("items"); box.innerHTML = "";
+    const tested = new Set(tests.map((r) => Number(r.level)));
+    state.items.forEach((it, i) => {
+      const c = document.createElement("article"); c.className = "card"; c.dataset.item = it.id;
+      let lv = "";
+      const pr = prodOf(it), mxL = maxLevel(it), ln = lineOf(it);
+      LEVELS.filter((L) => L <= mxL).forEach((L) => { lv += '<button type="button" data-act="lv" data-v="' + L + '" aria-pressed="' + (it.level === L) + '" aria-label="Producer level ' + L + '">' + L + (tested.has(L) ? '<span class="dot"></span>' : "") + '</button>'; });
+      let tiles = "";
+      for (let L = 1; L <= it.target; L++) {
+        const n = it.board[L] || 0;
+        tiles += '<div class="tile' + (n ? " has" : "") + (L === it.target ? " goal" : "") + '" data-act="tile" data-v="' + L + '" role="button" tabindex="0" aria-label="Level ' + L + ' items on board: ' + n + '. Tap to add one.">' +
+          '<span class="lv">' + (L === it.target ? "L" + L + " ★" : "L" + L) + '</span><span class="ct">' + n + '</span>' +
+          '<button type="button" class="minus" data-act="minus" data-v="' + L + '" aria-label="Remove one level ' + L + ' item">−</button></div>';
+      }
+      let sh = "";
+      SHARES.forEach(([v, l]) => { sh += '<button type="button" data-act="share" data-v="' + v + '" aria-pressed="' + (it.share === v) + '">' + l + '</button>'; });
+      c.innerHTML =
+        '<div class="item-head"><span class="item-no" aria-hidden="true">' + (i + 1) + '</span>' +
+        '<input class="item-name" data-act="name" id="name-' + it.id + '" type="text" maxlength="40" placeholder="' + esc(ln ? ln[0] : "Item " + (i + 1) + " (name is optional)") + '" value="' + esc(it.name) + '" aria-label="Item name">' +
+        (state.items.length > 1 ? '<button type="button" class="remove" data-act="remove">Remove</button>' : "") + '</div>' +
+        '<div class="pick"><label class="lbl" for="p-' + it.id + '">Producer</label>' +
+          '<select id="p-' + it.id + '" data-act="prod"><option value="">Choose your producer (optional)</option>' +
+          PRODUCERS.map((x) => [x.p, x.p]).concat(ALIASES.map(([a, w]) => [a + " → " + w, w])).sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([label, w]) => '<option value="' + esc(w) + '"' + (label === w && w === it.prod ? " selected" : "") + '>' + esc(label) + '</option>').join("") + '</select>' +
+          '<p class="muted small" style="margin-top:6px">Listed by the wiki name. Many producers change their name as they level up, so yours may appear under its first-level name.</p>' +
+          (pr ? '<span class="lbl" style="margin-top:10px">Which item?</span><div class="chips">' +
+            pr.lines.map((l, k) => '<button type="button" data-act="line" data-v="' + k + '" aria-pressed="' + (it.line === k) + '">' + esc(l[0]) + ' <span class="muted">· ' + l[1] + ' levels</span></button>').join("") + '</div>' : "") +
+        '</div>' +
+        '<div class="pair">' +
+          '<div><span class="lbl">Item level</span><div class="step"><button type="button" data-act="t" data-v="-1" aria-label="Lower item level">−</button><input id="t-' + it.id + '" data-act="tset" type="number" inputmode="numeric" min="2" max="' + maxTarget(it) + '" value="' + it.target + '" aria-label="Item level"><button type="button" data-act="t" data-v="1" aria-label="Raise item level">+</button></div></div>' +
+          '<div><span class="lbl">How many</span><div class="step"><button type="button" data-act="q" data-v="-1" aria-label="Fewer">−</button><input id="q-' + it.id + '" data-act="qset" type="number" inputmode="numeric" min="1" max="9" value="' + it.qty + '" aria-label="How many"><button type="button" data-act="q" data-v="1" aria-label="More">+</button></div></div>' +
+        '</div>' +
+        '<div><span class="lbl">Producer level' + (pr ? ' <span style="text-transform:none;letter-spacing:0">(max ' + mxL + ')</span>' : "") + '</span><div class="levels" role="group" aria-label="Producer level" style="grid-template-columns:repeat(' + Math.max(mxL, 5) + ',minmax(0,1fr))">' + lv + '</div></div>' +
+        '<div><div class="board-head"><span class="lbl" style="margin:0">Already on your board</span><button type="button" class="remove" data-act="clear"' + (Object.values(it.board).some((x) => x) ? "" : " hidden") + '>Clear</button></div>' +
+        '<p class="muted small" style="margin:2px 0 8px">Tap a level once for each item of this kind you have.</p>' +
+        '<div class="board">' + tiles + '</div><p class="board-note" data-note style="margin-top:8px"></p></div>' +
+        '<details class="more"' + (it.share !== 100 || (pr && pr.lines.length > 1) ? " open" : "") + '><summary>' + (pr && pr.lines.length > 1 ? "This producer makes " + pr.lines.length + " item lines. How often do you get yours?" : "Does this producer also make other items?") + '</summary><div class="chips">' + sh + '</div></details>';
+      box.appendChild(c);
+    });
+  }
+
+  function itemById(id) { return state.items.find((x) => x.id === id); }
+
+  // ---------- result ----------
+  function renderResult() {
+    oddsCache = {};
+    const items = state.items;
+    const perP = POWERS.map((P) => {
+      const plans = items.map((it) => plan(it, P));
+      const ok = plans.every((x) => x);
+      return { P, plans, ok, energy: ok ? plans.reduce((a, x) => a + x.energy, 0) : Infinity, taps: ok ? plans.reduce((a, x) => a + x.taps, 0) : Infinity };
+    });
+    // High boosts only work while your energy is above a threshold.
+    const E = state.energy;
+    const PL = state.player;
+    const playerOk = (P) => PL === null || PL >= PLAYER_MIN[P];
+    const energyOk = (P) => !(P in UNLOCK) || (UNLOCK[P] !== null && E !== null && E > UNLOCK[P]);
+    const isOpen = (P) => playerOk(P) && energyOk(P);
+    const minOf = (arr) => arr.reduce((m, x) => (!m || x.energy < m.energy || (x.energy === m.energy && x.taps < m.taps)) ? x : m, null);
+    const baseBest = minOf(perP.filter((x) => x.ok && !(x.P in UNLOCK) && playerOk(x.P)));
+    // Seen in game: x8 can only be switched on with 200+ energy (x16 with 400+). Once on, it keeps working as energy
+    // drops, but it turns off if you switch to another producer below the limit, leave the page or close the app.
+    // So a high boost covers the energy you have right now; energy you refill later (below 200) goes at the best of x1–x4.
+    items.forEach((it, i) => { perP.forEach((x) => { x.split = x.split || []; x.split[i] = { f: 1, energy: x.plans[i] ? x.plans[i].energy : 0, taps: x.plans[i] ? x.plans[i].taps : 0, hiTaps: 0 }; }); });
+    perP.forEach((x) => {
+      x.open = isOpen(x.P); x.fb = null; x.hiTaps = x.taps;
+      if (!x.ok || !x.open || !(x.P in UNLOCK) || !baseBest) return;
+      let left = E, active = false, prevKey = null, energy = 0, taps = 0, hiTaps = 0;
+      items.forEach((it, i) => {
+        const hi = x.plans[i], lo = baseBest.plans[i];
+        if (hi.energy === 0) { x.split[i] = { f: 1, energy: 0, taps: 0, hiTaps: 0 }; return; }
+        const key = it.prod ? it.prod + "|" + it.level : null, same = key !== null && key === prevKey;
+        prevKey = key;
+        let use = 0;
+        if ((active && same) || left > UNLOCK[x.P]) use = Math.min(Math.floor(left / x.P) * x.P, hi.energy);
+        const f = use / hi.energy;
+        left -= use; active = use > 0 && f >= 1;
+        const e = use + (1 - f) * lo.energy, t = f * hi.taps + (1 - f) * lo.taps;
+        x.split[i] = { f, energy: Math.round(e), taps: Math.round(t), hiTaps: Math.round(use / x.P) };
+        energy += e; taps += t; hiTaps += use / x.P;
+      });
+      if (x.split.some((sp) => sp.f < 1)) x.fb = baseBest;
+      x.energy = Math.round(energy); x.taps = Math.round(taps); x.hiTaps = Math.round(hiTaps);
+    });
+    const okP = perP.filter((x) => x.ok && x.open);
+    const best = minOf(okP);
+    const pick = perP.find((x) => x.P === state.pin && x.ok && x.open) || best;
+
+    // board notes per item (for the picked boost)
+    items.forEach((it, i) => {
+      const card = document.querySelector('[data-item="' + it.id + '"]'); if (!card) return;
+      const note = card.querySelector("[data-note]"), pl = pick && pick.plans[i];
+      card.querySelector('[data-act="clear"]').hidden = !Object.values(it.board).some((x) => x);
+      if (!pl || pl.haveAll === 0) { note.textContent = ""; return; }
+      if (pl.need === 0 || pl.have >= pl.goal) { note.innerHTML = "<b>You already have enough.</b> Just merge them."; return; }
+      note.innerHTML = "Your board covers <b>" + Math.round(pl.have / pl.goal * 100) + "%</b> of this item." +
+        (pl.wasted > 0 ? " Some low items can't pair up at x" + pick.P + ", so they're left out." : "");
+    });
+
+    const r = $("result");
+    $("plan").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.plan === state.plan)));
+    if (!pick) {
+      r.classList.add("done");
+      $("rEyebrow").textContent = "Check the item level";
+      $("rTotal").textContent = "–"; $("rSub").textContent = "No power boost can make every item in this order.";
+      $("rPwWrap").hidden = $("rBreak").hidden = $("rTrust").hidden = true;
+      $("sTotal").textContent = "– ⚡"; $("sSub").textContent = "Check your order";
+      return;
+    }
+    $("rPwWrap").hidden = $("rBreak").hidden = $("rTrust").hidden = false;
+    const done = pick.energy === 0;
+    r.classList.toggle("done", done);
+    $("rEyebrow").textContent = done ? "Order ready" : (pick === best ? "Energy needed with the best boost" : "Energy needed with x" + pick.P);
+    $("rTotal").textContent = fmt(pick.energy);
+    if (done) $("rSub").textContent = "Your board already has everything. Just merge.";
+    else {
+      const dur = (e) => { const mins = e * REFILL_MIN, h = Math.floor(mins / 60), m = mins % 60; return (h ? h + " h " : "") + (m ? m + " min" : "") || "0 min"; };
+      let txt;
+      if (pick.fb) txt = "Switch on x" + pick.P + " now and use your current energy for about " + fmt(pick.hiTaps) + " taps. After refilling, the boost is off below " + (UNLOCK[pick.P] + 1) + " energy, so finish at x" + pick.fb.P + ". About " + fmt(pick.taps) + " taps in all.";
+      else txt = fmt(pick.taps) + " taps at x" + pick.P + ".";
+      if (pick.P in UNLOCK && !done) txt += " Keep tapping the same producer: switching producers, leaving the page or closing the app turns the boost off below " + (UNLOCK[pick.P] + 1) + " energy.";
+      if (E === null) txt += " Refilling that much energy takes about " + dur(pick.energy) + ".";
+      else if (E >= pick.energy) txt += " You have enough energy right now.";
+      else txt += " You have " + fmt(E) + ", so you need " + fmt(pick.energy - E) + " more: about " + dur(pick.energy - E) + " of refill. Refill stops at 100, so collect it at least every 3 h 20 min.";
+      if (pick !== best) txt += " x" + best.P + " would save " + fmt(pick.energy - best.energy) + " energy.";
+      $("rSub").textContent = txt;
+    }
+
+    const pw = $("pw"); pw.innerHTML = "";
+    perP.forEach((x) => {
+      const b = document.createElement("button"); b.type = "button"; b.dataset.pw = x.P;
+      b.setAttribute("aria-pressed", String(x.P === pick.P));
+      if (x.ok && !x.open) {
+        b.disabled = true;
+        const byPlayer = !playerOk(x.P);
+        b.innerHTML = '<span class="x">x' + x.P + '</span><span class="e">🔒 ' + (byPlayer ? "Lv " + PLAYER_MIN[x.P] : (UNLOCK[x.P] + 1) + "+") + '</span>';
+        b.setAttribute("aria-label", "x" + x.P + (byPlayer ? " unlocks at player level " + PLAYER_MIN[x.P] : " needs " + (UNLOCK[x.P] + 1) + " energy"));
+      } else if (!x.ok) { b.disabled = true; b.innerHTML = '<span class="x">x' + x.P + '</span><span class="e">too high</span>'; b.setAttribute("aria-label", "x" + x.P + " makes items above your order"); }
+      else {
+        b.innerHTML = (best && x.P === best.P && !done ? '<span class="best">Best</span>' : "") + '<span class="x">x' + x.P + '</span><span class="e">' + fmt(x.energy) + '</span>';
+        b.setAttribute("aria-label", "x" + x.P + " boost: " + fmt(x.energy) + " energy");
+      }
+      pw.appendChild(b);
+    });
+
+    const hints = [];
+    if (PL !== null && PL < 40) hints.push(PL < 20 ? "Boosts unlock at player level 20 (x2) and 40 (x4)." : "x4 unlocks at player level 40.");
+    if (PL === null || PL >= 40) hints.push(E === null ? "x8 needs 200 energy and x16 needs 400. Enter your energy to include them." :
+      isOpen(16) ? "x8 and x16 are open. Switch the boost on now: it keeps working as your energy drops, as long as you stay on the same producer." :
+      isOpen(8) ? "x8 is open. Switch it on now: it keeps working as your energy drops. x16 needs 400." :
+      "x8 can be switched on at 200 energy, x16 at 400. Once on, they keep working as your energy drops.");
+    $("lockHint").textContent = hints.join(" ");
+    const bd = $("rBreak"); bd.innerHTML = "";
+    items.forEach((it, i) => {
+      const pl = pick.split && pick.split[i] ? pick.split[i] : pick.plans[i];
+      const row = document.createElement("div"); row.className = "bd";
+      const nm = document.createElement("span"); nm.textContent = (it.qty > 1 ? it.qty + "× " : "") + itemLabel(it, i) + " · level " + it.target;
+      const v = document.createElement("span"); v.textContent = pl.energy ? fmt(pl.energy) + " ⚡ · " + fmt(pl.taps) + " taps" : "on your board";
+      row.append(nm, v); bd.appendChild(row);
+    });
+
+    // trust
+    const kinds = pick.plans.map((x) => x.src.kind), tr = $("rTrust");
+    const weakest = kinds.includes("e") ? "e" : kinds.includes("o") ? "o" : "m";
+    tr.classList.toggle("weak", weakest === "e");
+    const lvls = [...new Set(items.map((x) => x.level))].join(", ");
+    tr.querySelector("span").textContent =
+      weakest === "m" ? "Based on your tests with producer level " + lvls + " at x" + pick.P + "." :
+      weakest === "o" ? "Based on your tests at producer level " + lvls + ", partly with other boosts." :
+      "Rough estimate: no tests at producer level " + items.filter((x) => pick.plans[items.indexOf(x)].src.kind === "e").map((x) => x.level).join(", ") + " yet. Add one under “Your test data”.";
+
+    $("sTotal").textContent = fmt(pick.energy) + " ⚡";
+    $("sSub").textContent = done ? "Ready to merge" : "at x" + pick.P + (pick === best ? " · best" : "") + " · " + fmt(pick.taps) + " taps";
+
+    // odds table
+    $("oddsPw").textContent = "x" + pick.P;
+    const ot = $("oddsTable"); ot.innerHTML = "";
+    const o = oddsFor(pick.P);
+    LEVELS.forEach((Lv) => {
+      const q = o[Lv].p, k = o[Lv].kind, row = document.createElement("tr");
+      const tag = k === "m" ? '<span class="tag m">tested</span>' : k === "o" ? '<span class="tag o">other boost</span>' : '<span class="tag e">estimate</span>';
+      row.innerHTML = '<td>Level ' + Lv + '</td><td>' + pct(1 - q.reduce((a, x) => a + x, 0)) + '</td><td>' + pct(q[0]) + '</td><td>' + pct(q[1]) + '</td><td>' + pct(q.slice(2).reduce((a, x) => a + x, 0)) + '</td><td>' + tag + '</td>';
+      ot.appendChild(row);
+    });
+  }
+
+  function update(rebuild) { if (rebuild) renderItems(); renderResult(); save(); }
+
+  // ---------- item interactions ----------
+  function handleItem(el, act) {
+    const card = el.closest("[data-item]"); if (!card) return false;
+    const it = itemById(card.dataset.item); if (!it) return false;
+    const v = Number(el.dataset.v);
+    switch (act) {
+      case "lv": it.level = v; break;
+      case "line": it.line = v; it.target = Math.min(it.target, maxTarget(it)); Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; }); break;
+      case "t": it.target = clamp(it.target + v, 2, maxTarget(it)); Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; }); break;
+      case "q": it.qty = clamp(it.qty + v, 1, 9); break;
+      case "tile": it.board[v] = (it.board[v] || 0) + 1; break;
+      case "minus": it.board[v] = Math.max(0, (it.board[v] || 0) - 1); if (!it.board[v]) delete it.board[v]; break;
+      case "share": it.share = v; break;
+      case "clear": it.board = {}; break;
+      case "remove": state.items = state.items.filter((x) => x !== it); break;
+      default: return false;
+    }
+    state.pin = null;
+    const focusSel = el.dataset.act === "minus" ? null : el.closest(".tile") ? '[data-item="' + it.id + '"] .tile[data-v="' + v + '"]' : null;
+    update(true);
+    if (focusSel) { const f = document.querySelector(focusSel); if (f) f.focus({ preventScroll: true }); }
+    return true;
+  }
+
+  document.addEventListener("click", async (e) => {
+    const el = e.target.closest("[data-act], button");
+    if (!el || el.disabled) return;
+    if (el.dataset.act && el.dataset.act !== "name" && el.dataset.act !== "tset" && el.dataset.act !== "qset") { e.stopPropagation(); if (handleItem(el, el.dataset.act)) return; }
+    const d = el.dataset;
+    if (d.pw) { state.pin = +d.pw; update(false); return; }
+    if (d.plan) { state.plan = d.plan; update(false); return; }
+    if (el.id === "addItem") { state.items.push(newItem()); update(true); const n = $("name-" + state.items[state.items.length - 1].id); if (n) n.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+    if (el.id === "stickyBtn") { $("result").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); return; }
+    if (d.del) {
+      if (armedDelete !== d.del) { armedDelete = d.del; renderTests(); return; }
+      const id = d.del; armedDelete = null;
+      const t = tests.find((x) => x._id === id);
+      if (t && t.builtin) { hidden.add(id); saveHidden(); } else { userTests = userTests.filter((x) => x._id !== id); saveUser(); }
+      refreshTests();
+    }
+  });
+  document.addEventListener("keydown", (e) => {
+    const t = e.target.closest && e.target.closest(".tile");
+    if (t && (e.key === "Enter" || e.key === " ") && e.target === t) { e.preventDefault(); handleItem(t, "tile"); }
+  });
+  document.addEventListener("input", (e) => {
+    const el = e.target, card = el.closest && el.closest("[data-item]"); if (!card) return;
+    const it = itemById(card.dataset.item); if (!it) return;
+    if (el.dataset.act === "name") { it.name = el.value.slice(0, 40); renderResult(); save(); }
+  });
+  document.addEventListener("change", (e) => {
+    const el = e.target, card = el.closest && el.closest("[data-item]"); if (!card) return;
+    const it = itemById(card.dataset.item); if (!it) return;
+    if (el.dataset.act === "prod") {
+      it.prod = el.value || null;
+      const pr = prodOf(it);
+      it.line = pr && pr.lines.length === 1 ? 0 : null;
+      if (it.level > maxLevel(it)) it.level = maxLevel(it);
+      if (pr && pr.lines.length > 1 && it.share === 100) it.share = 85;
+      if (pr && pr.lines.length === 1) it.share = 100;
+      it.target = Math.min(it.target, maxTarget(it));
+      Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; });
+      state.pin = null; update(true);
+      const f = $("p-" + it.id); if (f) f.focus({ preventScroll: true });
+      return;
+    }
+    if (el.dataset.act === "tset") { it.target = clamp(parseInt(el.value, 10) || it.target, 2, maxTarget(it)); Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; }); state.pin = null; update(true); }
+    if (el.dataset.act === "qset") { it.qty = clamp(parseInt(el.value, 10) || 1, 1, 9); update(true); }
+  });
+
+  // ---------- test log ----------
+  LEVELS.forEach((L) => { const o = document.createElement("option"); o.value = L; o.textContent = "Level " + L; $("fLevel").appendChild(o); });
+  POWERS.forEach((P) => { const o = document.createElement("option"); o.value = P; o.textContent = "x" + P; $("fPower").appendChild(o); });
+  $("fLevel").value = state.items[0].level; $("fPower").value = 8;
+  function buildCounts() {
+    const P = Number($("fPower").value), b = Math.log2(P) + 1, box = $("cnts");
+    const keep = {}; box.querySelectorAll("input").forEach((i) => { keep[i.id] = i.value; });
+    box.innerHTML = "";
+    const add = (id, label) => { const d = document.createElement("div"); d.className = "cnt"; d.innerHTML = '<label for="' + id + '">' + label + '</label><input id="' + id + '" type="number" min="0" inputmode="numeric" value="' + (keep[id] || 0) + '">'; box.appendChild(d); };
+    add("fN", "Level " + b + " (normal)");
+    for (let k = 1; k <= JMAX; k++) add("fJ" + k, "Level " + (b + k) + " (+" + k + ")");
+    add("fO", "Other item");
+  }
+  buildCounts();
+  $("fPower").addEventListener("change", buildCounts);
+  if (state.energy !== null) $("energyNow").value = state.energy;
+  if (state.player) $("playerLv").value = state.player;
+  $("playerLv").addEventListener("input", () => {
+    const v = parseInt($("playerLv").value, 10);
+    state.player = isNaN(v) || v < 1 ? null : v;
+    renderResult(); save();
+  });
+  $("energyNow").addEventListener("input", () => {
+    const v = parseInt($("energyNow").value, 10);
+    state.energy = isNaN(v) ? null : Math.max(0, v);
+    renderResult(); save();
+  });
+
+  function renderTests() {
+    const box = $("tests"); box.innerHTML = "";
+    const sorted = tests.slice().sort((a, b) => (num(b.level) - num(a.level)) || (num(b.power) - num(a.power)) || String(a.producer || "").localeCompare(String(b.producer || "")));
+    let total = 0;
+    sorted.forEach((r) => {
+      const P = num(r.power) || 1, base = Math.log2(P) + 1, j = Array.from({ length: JMAX }, (_, k) => num(r["j" + (k + 1)]));
+      const taps = num(r.normal) + j.reduce((a, b) => a + b, 0) + num(r.other); total += taps;
+      const parts = [num(r.normal) + "× level " + base];
+      j.forEach((x, k) => { if (x) parts.push(x + "× level " + (base + k + 1)); });
+      if (num(r.other)) parts.push(num(r.other) + "× other item");
+      const el = document.createElement("div"); el.className = "test";
+      const top = document.createElement("div"); top.className = "top";
+      const nm = document.createElement("span"); nm.className = "name"; nm.textContent = String(r.producer || "Producer");
+      const meta = document.createElement("span"); meta.className = "meta"; meta.textContent = "Level " + num(r.level) + " · x" + P + " · " + taps + " taps";
+      top.append(nm, meta);
+      if (r.builtin) { const b = document.createElement("span"); b.className = "tag-b"; b.textContent = "built in"; top.appendChild(b); }
+      { const d = document.createElement("button"); d.type = "button"; d.className = "del"; d.dataset.del = r._id; d.textContent = armedDelete === r._id ? (r.builtin ? "Tap again to hide" : "Tap again to delete") : (r.builtin ? "Hide" : "Delete"); top.appendChild(d); }
+      const c = document.createElement("div"); c.className = "counts"; c.textContent = parts.join(" · ");
+      el.append(top, c); box.appendChild(el);
+    });
+    $("logCount").textContent = tests.length ? "· " + tests.length + " tests, " + total + " taps" : "";
+  }
+
+  // ---------- storage on this device ----------
+  const BUILTIN = [{"_id":"b-booth4-x4","builtin":true,"producer":"Ticket Booth","level":4,"power":4,"normal":13,"other":2,"j1":1},{"_id":"b-booth5-x8","builtin":true,"producer":"Illuminated Ticket Booth","level":5,"power":8,"normal":23,"other":3,"j1":1},{"_id":"b-coaster7-x1","builtin":true,"producer":"Dragon Coaster Entrance","level":7,"power":1,"normal":14,"other":3,"j1":2,"j2":1},{"_id":"b-coaster7-x2","builtin":true,"producer":"Dragon Coaster Entrance","level":7,"power":2,"normal":5,"other":2,"j1":4,"j2":1,"j7":1},{"_id":"b-desk3-x1","builtin":true,"producer":"Ticket Desk","level":3,"power":1,"normal":28,"other":2,"j1":2},{"_id":"b-desk3-x2","builtin":true,"producer":"Ticket Desk","level":3,"power":2,"normal":18,"other":1},{"_id":"b-desk3-x4","builtin":true,"producer":"Ticket Desk","level":3,"power":4,"normal":9,"other":0},{"_id":"b-duck2-x4","builtin":true,"producer":"Duck Bucket","level":2,"power":4,"normal":16,"other":0},{"_id":"b-frame-x16","builtin":true,"producer":"Golden Bones Certificate Frame","level":7,"power":16,"normal":6,"other":0,"j1":3,"j2":1},{"_id":"b-frame-x4","builtin":true,"producer":"Golden Bones Certificate Frame","level":7,"power":4,"normal":12,"other":0,"j1":4,"j2":1},{"_id":"b-frame-x8","builtin":true,"producer":"Golden Bones Certificate Frame","level":7,"power":8,"normal":8,"other":0,"j1":8,"j2":1},{"_id":"b-giraffe6-x16","builtin":true,"producer":"Giraffe Seat","level":6,"power":16,"normal":6,"other":0,"j1":1},{"_id":"b-giraffe6-x8","builtin":true,"producer":"Giraffe Seat","level":6,"power":8,"normal":8,"other":0,"j1":1},{"_id":"b-lion-1","builtin":true,"producer":"Lion Seat","level":5,"power":2,"normal":25,"other":0,"j1":3,"j5":1},{"_id":"b-ticket-x1","builtin":true,"producer":"Small Ticket Point","level":1,"power":1,"normal":31,"other":0},{"_id":"b-ticket-x2","builtin":true,"producer":"Small Ticket Point","level":1,"power":2,"normal":20,"other":0},{"_id":"b-ticket-x4","builtin":true,"producer":"Small Ticket Point","level":1,"power":4,"normal":15,"other":0},{"_id":"b-veg-1","builtin":true,"producer":"Vegetable Stall","level":7,"power":2,"normal":18,"other":3,"j1":6,"j2":2,"j5":1},{"_id":"b-veg-2","builtin":true,"producer":"Vegetable Stall","level":7,"power":2,"normal":12,"other":3,"j1":5}];
+  const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || "null"); return v === null ? d : v; } catch (e) { return d; } };
+  let userTests = load("mepTests", []);
+  let hidden = new Set(load("mepHidden", []));
+  const saveUser = () => { try { localStorage.setItem("mepTests", JSON.stringify(userTests)); return true; } catch (e) { return false; } };
+  const saveHidden = () => { try { localStorage.setItem("mepHidden", JSON.stringify([...hidden])); } catch (e) {} };
+  function refreshTests() {
+    tests = BUILTIN.filter((t) => !hidden.has(t._id)).concat(userTests);
+    $("restoreBtn").hidden = hidden.size === 0;
+    renderTests(); update(true);
+  }
+  function status(text, kind) { const st = $("dbStatus"); st.hidden = !text; st.className = "status" + (kind ? " " + kind : ""); st.textContent = text || ""; }
+  const clean = (r) => {
+    const o = { _id: String(r._id || "u-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)).slice(0, 40), producer: String(r.producer || "Producer").slice(0, 40),
+      level: clamp(parseInt(r.level, 10) || 1, 1, 10), power: POWERS.includes(Number(r.power)) ? Number(r.power) : 1,
+      normal: Math.max(0, parseInt(r.normal, 10) || 0), other: Math.max(0, parseInt(r.other, 10) || 0), created: Number(r.created) || Date.now() };
+    for (let k = 1; k <= JMAX; k++) { const v = Math.max(0, parseInt(r["j" + k], 10) || 0); if (v) o["j" + k] = v; }
+    return o;
+  };
+  $("exportBtn").addEventListener("click", async () => {
+    if (!userTests.length) { status("You haven't added any tests yet, so there's nothing to export.", "err"); return; }
+    const data = JSON.stringify({ app: "merge-energy-calculator", version: 1, exported: new Date().toISOString(), tests: userTests }, null, 1);
+    const name = "merge-energy-tests-" + new Date().toISOString().slice(0, 10) + ".json";
+    try {
+      const file = new File([data], name, { type: "application/json" });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: "Merge energy tests" }); status("Exported " + userTests.length + (userTests.length === 1 ? " test." : " tests."), "ok"); return; }
+    } catch (e) { if (e && e.name === "AbortError") return; }
+    const url = URL.createObjectURL(new Blob([data], { type: "application/json" }));
+    const a = document.createElement("a"); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    status("Exported " + userTests.length + (userTests.length === 1 ? " test" : " tests") + " to " + name + ".", "ok");
+  });
+  $("importBtn").addEventListener("click", () => $("importFile").click());
+  $("importFile").addEventListener("change", async () => {
+    const f = $("importFile").files[0]; $("importFile").value = "";
+    if (!f) return;
+    try {
+      const j = JSON.parse(await f.text());
+      const rows = Array.isArray(j) ? j : Array.isArray(j.tests) ? j.tests : null;
+      if (!rows) throw new Error("format");
+      const ids = new Set(userTests.map((x) => x._id).concat(BUILTIN.map((x) => x._id)));
+      let added = 0;
+      rows.slice(0, 2000).forEach((r) => { const c = clean(r); if (ids.has(c._id)) return; ids.add(c._id); userTests.push(c); added++; });
+      if (!saveUser()) { status("This device has no room to save more tests.", "err"); return; }
+      status(added ? "Imported " + added + " new test" + (added > 1 ? "s" : "") + "." : "Those tests were already here, so nothing changed.", "ok");
+      refreshTests();
+    } catch (e) { status("That file isn't a test export from this app. Pick a file made with “Export my tests”.", "err"); }
+  });
+  $("restoreBtn").addEventListener("click", () => { hidden.clear(); saveHidden(); refreshTests(); status("Built-in tests are back.", "ok"); });
+
+  $("addForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const v = (id) => Math.max(0, parseInt($(id).value, 10) || 0);
+    const row = { producer: $("fName").value.trim().slice(0, 40) || "Producer", level: Number($("fLevel").value), power: Number($("fPower").value),
+      normal: v("fN"), other: v("fO"), created: Date.now() };
+    for (let k = 1; k <= JMAX; k++) row["j" + k] = v("fJ" + k);
+    const msg = $("fMsg");
+    if (row.normal + row.other + Array.from({ length: JMAX }, (_, k) => row["j" + (k + 1)]).reduce((a, x) => a + x, 0) === 0) { msg.className = "status err"; msg.textContent = "Enter how many items you got for at least one level."; return; }
+    $("fSave").disabled = true; msg.className = "status"; msg.textContent = "Saving…";
+    userTests.push(clean(row));
+    if (saveUser()) { msg.className = "status ok"; msg.textContent = "Saved on this device. Your energy numbers now include this test."; $("cnts").querySelectorAll("input").forEach((i) => { i.value = 0; }); refreshTests(); }
+    else { userTests.pop(); msg.className = "status err"; msg.textContent = "This device has no room to save more tests. Export and delete some first."; }
+    $("fSave").disabled = false;
+  });
+
+  // ---------- home screen tip + offline ----------
+  const standalone = window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (isIOS && !standalone && !load("mepInstallHidden", false)) $("install").hidden = false;
+  $("installClose").addEventListener("click", () => { $("install").hidden = true; try { localStorage.setItem("mepInstallHidden", "true"); } catch (e) {} });
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+  refreshTests();
+})();
+</script>
+</body>
+</html>
