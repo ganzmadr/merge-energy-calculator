@@ -257,7 +257,7 @@ footer a { color: var(--accent); }
           <div class="rule"><span class="ic">x8</span><p><b>The power boost sets which level the producer makes:</b> x1 makes level 1, x2 level 2, x4 level 3, x8 level 4, x16 level 5. Each tap costs as much energy as the boost. x2 unlocks at player level 20 and x4 at 40. x8 can only be switched on with 200 energy and x16 with 400, but once on they keep working as your energy drops, but energy refills by itself (1 every 2 minutes) only up to 100, so most of the time you'll use x1, x2 or x4.</p></div>
           <div class="rule"><span class="ic">+1</span><p><b>Some taps give a bonus item</b> one or more levels higher. That's where you save energy. Bonus chances grow with the producer's level and with bigger boosts.</p></div>
           <div class="rule"><span class="ic">⚑</span><p><b>Items below the boost level only help in pairs.</b> With x8, a single level 2 item on your board can't be used, so the calculator leaves it out.</p></div>
-          <div class="rule"><span class="ic">Safe</span><p><b>Safe</b> ignores rare lucky jumps of 3 or more levels. <b>Average luck</b> counts them, so it's cheaper but less certain.</p></div>
+          <div class="rule"><span class="ic">Safe</span><p><b>Safe</b> ignores rare lucky jumps of 3 or more levels, like gift boxes. <b>Average luck</b> counts them carefully: about one in every 100 taps at producer level 5 and up, always with the typical jump size (+5), and on either item line. It's cheaper but less certain.</p></div>
         </div>
         <div><h3 id="oddsH">Bonus chances at <span id="oddsPw">x8</span></h3><p class="muted small">From your tests.</p></div>
         <div class="table-wrap">
@@ -315,7 +315,7 @@ footer a { color: var(--accent); }
 <footer>
   <p>A fan-made tool. Not affiliated with, endorsed by or connected to Travel Town or its developer. All game names belong to their owners.</p>
   <p>Producer and item line data from the <a href="https://travel-town-mobile-game.fandom.com/wiki/Items" target="_blank" rel="noopener">Travel Town Wiki</a> (CC BY-SA). Bonus chances from player test taps. Your orders and tests stay on this device.</p>
-  <p id="ver">Version 1.0</p>
+  <p id="ver">Version 1.1</p>
 </footer>
 
 <div class="sticky" id="sticky"><button type="button" id="stickyBtn"><span class="s1" id="sTotal">0 ⚡</span><span class="s2" id="sSub"></span></button></div>
@@ -399,6 +399,22 @@ footer a { color: var(--accent); }
     return (oddsCache[P] = out);
   }
 
+  // ---------- lucky jumps ----------
+  // Lucky jumps (+3 levels or more, mostly gift boxes) are rare, so a level's own few tests can't measure them.
+  // They are pooled over all tests from the lowest producer level that ever had one. Every tap of both item lines
+  // counts, because a lucky jump can land on either line. The rate is pulled toward zero (as if 100 more taps had
+  // no lucky jump), and each lucky jump counts with the typical (median) jump size, never the biggest one seen.
+  function luckStats() {
+    if (oddsCache.luck) return oddsCache.luck;
+    let minL = Infinity; const jumps = [];
+    tests.forEach((r) => { for (let k = 3; k <= JMAX; k++) { const n = num(r["j" + k]); if (n) { minL = Math.min(minL, num(r.level)); for (let i = 0; i < n; i++) jumps.push(k); } } });
+    let taps = 0;
+    tests.forEach((r) => { if (num(r.level) >= minL) { taps += num(r.normal) + num(r.other); for (let k = 1; k <= JMAX; k++) taps += num(r["j" + k]); } });
+    jumps.sort((a, b) => a - b);
+    const size = jumps.length ? jumps[Math.floor((jumps.length - 1) / 2)] : 0;
+    return (oddsCache.luck = { count: jumps.length, taps, minL, size, rate: jumps.length ? jumps.length / (taps + 100) : 0 });
+  }
+
   // ---------- the maths for one order item at one boost ----------
   // Everything is counted in "level 1 item" units: a level L item is worth 2^(L-1).
   function plan(it, P) {
@@ -414,11 +430,15 @@ footer a { color: var(--accent); }
     have = Math.min(have, goal);
     const need = goal - have;
     const src = oddsFor(P)[it.level], p = src.p.slice();
-    if (state.plan === "safe") for (let k = 2; k < p.length; k++) p[k] = 0;
+    for (let k = 2; k < p.length; k++) p[k] = 0; // lucky jumps are handled separately, below
     const base = 1 - p.reduce((a, x) => a + x, 0);
     const cap = Math.pow(2, t - 1); // an item above the target can't be split back down
     let per = base * Math.pow(2, b - 1);
     p.forEach((x, k) => { per += x * Math.min(Math.pow(2, b + k), cap); });
+    // Average luck: about 1 tap in 100 is a lucky jump instead of a normal tap (only at producer levels where one was seen).
+    const lk = luckStats();
+    if (state.plan === "avg" && lk.rate > 0 && it.level >= lk.minL) per = (1 - lk.rate) * per + lk.rate * Math.min(Math.pow(2, b - 1 + lk.size), cap);
+    // Only the share of taps that lands on your item line counts, for normal, bonus and lucky items alike.
     per *= it.share / 100;
     const taps = need === 0 ? 0 : Math.ceil(need / per);
     return { P, b, need, taps, energy: taps * P, have, haveAll: Math.min(haveAll, goal), goal, src, wasted: Math.min(haveAll, goal) - have };
