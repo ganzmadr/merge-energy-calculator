@@ -4,7 +4,7 @@ A fan-made web app for **Travel Town**. Enter what an order asks for, your produ
 
 - Works on any phone or computer browser, no sign-in
 - Install it on the iPhone home screen (Safari → Share → **Add to Home Screen**) and it works offline
-- Built-in bonus chances from 19 test sessions (~370 taps, producer levels 1–7, boosts x1–x16)
+- Built-in bonus chances from 20 test sessions (~385 taps, producer levels 1–7, boosts x1–x16)
 - Add your own tests; they stay on your device. Export/import them as a file to back up or share
 
 ## Files
