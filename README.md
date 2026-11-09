@@ -30,7 +30,7 @@ Any static host works the same way (Netlify, Cloudflare Pages, your own web spac
 - One level L item = 2^(L−1) level 1 items
 - Power boost x1/x2/x4/x8/x16 makes level 1/2/3/4/5 items and costs 1/2/4/8/16 energy per tap
 - x2 unlocks at player level 20, x4 at 40 (Travel Town Wiki, "Leveling Up")
-- x8 can be switched on with 200+ energy, x16 with 400+ (Travel Town Wiki, "Boosters"). Once on, the boost stays on as energy drops, until you switch to another producer, leave the page or close the app (observed in game)
+- x8 can be switched on with 200+ energy, x16 with 400+ (Travel Town Wiki, "Boosters"). Once on, the boost stays on as energy drops, even across producers and pages, until you change the boost or fully close the app (observed in game)
 - Energy refills 1 every 2 minutes, up to 100
 - Bonus items (+1 level or more) depend on producer level and boost; values come from test taps. Gift boxes ("WOW!") count as the level of the item inside and are treated as rare lucky jumps
 

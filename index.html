@@ -254,7 +254,7 @@ footer a { color: var(--accent); }
       <div class="fold-body">
         <div class="rules">
           <div class="rule"><span class="ic">2→1</span><p><b>Two items merge into one</b> of the next level, so every level doubles the cost. A level 10 item takes 512 level 1 items.</p></div>
-          <div class="rule"><span class="ic">x8</span><p><b>The power boost sets which level the producer makes:</b> x1 makes level 1, x2 level 2, x4 level 3, x8 level 4, x16 level 5. Each tap costs as much energy as the boost. x2 unlocks at player level 20 and x4 at 40. x8 can only be switched on with 200 energy and x16 with 400, but once on they keep working as your energy drops, but energy refills by itself (1 every 2 minutes) only up to 100, so most of the time you'll use x1, x2 or x4.</p></div>
+          <div class="rule"><span class="ic">x8</span><p><b>The power boost sets which level the producer makes:</b> x1 makes level 1, x2 level 2, x4 level 3, x8 level 4, x16 level 5. Each tap costs as much energy as the boost. x2 unlocks at player level 20 and x4 at 40. x8 can only be switched on with 200 energy and x16 with 400. Once on, the boost stays on as your energy drops, even when you move to another producer or another page, until you change the boost or fully close the app. Energy refills by itself (1 every 2 minutes) only up to 100, so most of the time you'll use x1, x2 or x4.</p></div>
           <div class="rule"><span class="ic">+1</span><p><b>Some taps give a bonus item</b> one or more levels higher. That's where you save energy. Bonus chances grow with the producer's level and with bigger boosts.</p></div>
           <div class="rule"><span class="ic">⚑</span><p><b>Items below the boost level only help in pairs.</b> With x8, a single level 2 item on your board can't be used, so the calculator leaves it out.</p></div>
           <div class="rule"><span class="ic">Safe</span><p><b>Safe</b> ignores rare lucky jumps of 3 or more levels, like gift boxes. <b>Average luck</b> counts them carefully: about one in every 100 taps at producer level 5 and up, always with the typical jump size (+5), and on either item line. It's cheaper but less certain.</p></div>
@@ -315,7 +315,7 @@ footer a { color: var(--accent); }
 <footer>
   <p>A fan-made tool. Not affiliated with, endorsed by or connected to Travel Town or its developer. All game names belong to their owners.</p>
   <p>Producer and item line data from the <a href="https://travel-town-mobile-game.fandom.com/wiki/Items" target="_blank" rel="noopener">Travel Town Wiki</a> (CC BY-SA). Bonus chances from player test taps. Your orders and tests stay on this device.</p>
-  <p id="ver">Version 1.1</p>
+  <p id="ver">Version 1.2</p>
 </footer>
 
 <div class="sticky" id="sticky"><button type="button" id="stickyBtn"><span class="s1" id="sTotal">0 ⚡</span><span class="s2" id="sSub"></span></button></div>
@@ -506,23 +506,21 @@ footer a { color: var(--accent); }
     const isOpen = (P) => playerOk(P) && energyOk(P);
     const minOf = (arr) => arr.reduce((m, x) => (!m || x.energy < m.energy || (x.energy === m.energy && x.taps < m.taps)) ? x : m, null);
     const baseBest = minOf(perP.filter((x) => x.ok && !(x.P in UNLOCK) && playerOk(x.P)));
-    // Seen in game: x8 can only be switched on with 200+ energy (x16 with 400+). Once on, it keeps working as energy
-    // drops, but it turns off if you switch to another producer below the limit, leave the page or close the app.
+    // Seen in game: x8 can only be switched on with 200+ energy (x16 with 400+). Once on, it stays on as energy drops,
+    // across producers and pages, until you change the boost or fully close the app.
     // So a high boost covers the energy you have right now; energy you refill later (below 200) goes at the best of x1–x4.
     items.forEach((it, i) => { perP.forEach((x) => { x.split = x.split || []; x.split[i] = { f: 1, energy: x.plans[i] ? x.plans[i].energy : 0, taps: x.plans[i] ? x.plans[i].taps : 0, hiTaps: 0 }; }); });
     perP.forEach((x) => {
       x.open = isOpen(x.P); x.fb = null; x.hiTaps = x.taps;
       if (!x.ok || !x.open || !(x.P in UNLOCK) || !baseBest) return;
-      let left = E, active = false, prevKey = null, energy = 0, taps = 0, hiTaps = 0;
+      let left = E, active = false, energy = 0, taps = 0, hiTaps = 0;
       items.forEach((it, i) => {
         const hi = x.plans[i], lo = baseBest.plans[i];
         if (hi.energy === 0) { x.split[i] = { f: 1, energy: 0, taps: 0, hiTaps: 0 }; return; }
-        const key = it.prod ? it.prod + "|" + it.level : null, same = key !== null && key === prevKey;
-        prevKey = key;
         let use = 0;
-        if ((active && same) || left > UNLOCK[x.P]) use = Math.min(Math.floor(left / x.P) * x.P, hi.energy);
+        if (active || left > UNLOCK[x.P]) use = Math.min(Math.floor(left / x.P) * x.P, hi.energy);
         const f = use / hi.energy;
-        left -= use; active = use > 0 && f >= 1;
+        left -= use; active = active || use > 0;
         const e = use + (1 - f) * lo.energy, t = f * hi.taps + (1 - f) * lo.taps;
         x.split[i] = { f, energy: Math.round(e), taps: Math.round(t), hiTaps: Math.round(use / x.P) };
         energy += e; taps += t; hiTaps += use / x.P;
@@ -564,9 +562,9 @@ footer a { color: var(--accent); }
     else {
       const dur = (e) => { const mins = e * REFILL_MIN, h = Math.floor(mins / 60), m = mins % 60; return (h ? h + " h " : "") + (m ? m + " min" : "") || "0 min"; };
       let txt;
-      if (pick.fb) txt = "Switch on x" + pick.P + " now and use your current energy for about " + fmt(pick.hiTaps) + " taps. After refilling, the boost is off below " + (UNLOCK[pick.P] + 1) + " energy, so finish at x" + pick.fb.P + ". About " + fmt(pick.taps) + " taps in all.";
+      if (pick.fb) txt = "Switch on x" + pick.P + " now and use your current energy for about " + fmt(pick.hiTaps) + " taps. If you close the app while energy refills, you can't switch it back on below " + (UNLOCK[pick.P] + 1) + " energy, so finish at x" + pick.fb.P + ". It stays on across producers and pages until you change it or close the app. About " + fmt(pick.taps) + " taps in all.";
       else txt = fmt(pick.taps) + " taps at x" + pick.P + ".";
-      if (pick.P in UNLOCK && !done) txt += " Keep tapping the same producer: switching producers, leaving the page or closing the app turns the boost off below " + (UNLOCK[pick.P] + 1) + " energy.";
+      if (pick.P in UNLOCK && !done && !pick.fb) txt += " The boost stays on across producers and pages. Don't change it or fully close the app: below " + (UNLOCK[pick.P] + 1) + " energy you can't switch it back on.";
       if (E === null) txt += " Refilling that much energy takes about " + dur(pick.energy) + ".";
       else if (E >= pick.energy) txt += " You have enough energy right now.";
       else txt += " You have " + fmt(E) + ", so you need " + fmt(pick.energy - E) + " more: about " + dur(pick.energy - E) + " of refill. Refill stops at 100, so collect it at least every 3 h 20 min.";
@@ -594,9 +592,9 @@ footer a { color: var(--accent); }
     const hints = [];
     if (PL !== null && PL < 40) hints.push(PL < 20 ? "Boosts unlock at player level 20 (x2) and 40 (x4)." : "x4 unlocks at player level 40.");
     if (PL === null || PL >= 40) hints.push(E === null ? "x8 needs 200 energy and x16 needs 400. Enter your energy to include them." :
-      isOpen(16) ? "x8 and x16 are open. Switch the boost on now: it keeps working as your energy drops, as long as you stay on the same producer." :
-      isOpen(8) ? "x8 is open. Switch it on now: it keeps working as your energy drops. x16 needs 400." :
-      "x8 can be switched on at 200 energy, x16 at 400. Once on, they keep working as your energy drops.");
+      isOpen(16) ? "x8 and x16 are open. Switch the boost on now: it stays on as your energy drops, until you change it or close the app." :
+      isOpen(8) ? "x8 is open. Switch it on now: it stays on until you change it or close the app. x16 needs 400." :
+      "x8 can be switched on at 200 energy, x16 at 400. Once on, they stay on until you change the boost or close the app.");
     $("lockHint").textContent = hints.join(" ");
     const bd = $("rBreak"); bd.innerHTML = "";
     items.forEach((it, i) => {
