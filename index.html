@@ -315,7 +315,7 @@ footer a { color: var(--accent); }
 <footer>
   <p>A fan-made tool. Not affiliated with, endorsed by or connected to Travel Town or its developer. All game names belong to their owners.</p>
   <p>Producer and item line data from the <a href="https://travel-town-mobile-game.fandom.com/wiki/Items" target="_blank" rel="noopener">Travel Town Wiki</a> (CC BY-SA). Bonus chances from player test taps. Your orders and tests stay on this device.</p>
-  <p id="ver">Version 1.7</p>
+  <p id="ver">Version 1.8</p>
 </footer>
 
 <div class="sticky" id="sticky"><button type="button" id="stickyBtn"><span class="s1" id="sTotal">0 ⚡</span><span class="s2" id="sSub"></span></button></div>
@@ -341,7 +341,14 @@ footer a { color: var(--accent); }
   const maxLevel = (it) => { const pr = prodOf(it); return pr ? pr.max : 7; };
   const itemLabel = (it, i) => it.name || (lineOf(it) ? lineOf(it)[0] : "Item " + (i + 1));
   const num = (v) => Math.max(0, Number(v) || 0);
-  const SHARES = [[100, "No"], [85, "Sometimes"], [50, "About half the time"]];
+  // Share of taps that give a given item line. Seen in tests (Vegetable Stall, Ticket Booth, Adoption Certificate):
+  // the first line on the wiki comes on about 87% of taps, the other lines share the remaining ~13%.
+  const MAIN_SHARE = 87;
+  const minorShare = (pr) => Math.max(4, Math.round((100 - MAIN_SHARE) / Math.max(1, pr.lines.length - 1)));
+  const defaultShare = (it) => { const pr = prodOf(it); if (!pr || pr.lines.length < 2) return 100; return it.line ? minorShare(pr) : MAIN_SHARE; };
+  const sharesFor = (it) => { const pr = prodOf(it);
+    const rare = pr && pr.lines.length > 1 ? minorShare(pr) : 13;
+    return [[100, "Every tap"], [MAIN_SHARE, "Most taps"], [50, "About half"], [rare, "Rarely (about 1 in " + Math.round(100 / rare) + ")"]]; };
 
   let state = { plan: "safe", pin: null, energy: null, player: null, items: [] };
   // x8 needs 200 energy and x16 needs 400 (Travel Town wiki, "Boosters"). Stored as "more than" values.
@@ -350,6 +357,8 @@ footer a { color: var(--accent); }
   const PLAYER_MIN = { 1: 1, 2: 20, 4: 40, 8: 40, 16: 40 };
   try { const s = JSON.parse(localStorage.getItem("mepOrder") || "null"); if (s && Array.isArray(s.items)) state = Object.assign(state, s); } catch (e) {}
   if (!state.items.length) state.items = [newItem()];
+  // Cards saved with the old "Sometimes" (85%) default get the share that fits their item line.
+  state.items.forEach((it) => { if (it.share === 85 && prodOf(it)) it.share = defaultShare(it); });
   const save = () => { try { localStorage.setItem("mepOrder", JSON.stringify(state)); } catch (e) {} };
   function newItem() { const last = state.items[state.items.length - 1]; return { id: Math.random().toString(36).slice(2, 9), name: "", prod: last ? last.prod : null, line: null, target: last ? last.target : 8, qty: 1, level: last ? last.level : 7, share: last ? last.share : 100, board: {} }; }
 
@@ -461,7 +470,7 @@ footer a { color: var(--accent); }
           '<button type="button" class="minus" data-act="minus" data-v="' + L + '" aria-label="Remove one level ' + L + ' item">−</button></div>';
       }
       let sh = "";
-      SHARES.forEach(([v, l]) => { sh += '<button type="button" data-act="share" data-v="' + v + '" aria-pressed="' + (it.share === v) + '">' + l + '</button>'; });
+      sharesFor(it).forEach(([v, l]) => { sh += '<button type="button" data-act="share" data-v="' + v + '" aria-pressed="' + (it.share === v) + '">' + l + '</button>'; });
       c.innerHTML =
         '<div class="item-head"><span class="item-no" aria-hidden="true">' + (i + 1) + '</span>' +
         '<input class="item-name" data-act="name" id="name-' + it.id + '" type="text" maxlength="40" placeholder="' + esc(ln ? ln[0] : "Item " + (i + 1) + " (name is optional)") + '" value="' + esc(it.name) + '" aria-label="Item name">' +
@@ -482,7 +491,7 @@ footer a { color: var(--accent); }
         '<div><div class="board-head"><span class="lbl" style="margin:0">Already on your board</span><button type="button" class="remove" data-act="clear"' + (Object.values(it.board).some((x) => x) ? "" : " hidden") + '>Clear</button></div>' +
         '<p class="muted small" style="margin:2px 0 8px">Tap a level once for each item of this kind you have.</p>' +
         '<div class="board">' + tiles + '</div><p class="board-note" data-note style="margin-top:8px"></p></div>' +
-        '<details class="more"' + (it.share !== 100 || (pr && pr.lines.length > 1) ? " open" : "") + '><summary>' + (pr && pr.lines.length > 1 ? "This producer makes " + pr.lines.length + " item lines. How often do you get yours?" : "Does this producer also make other items?") + '</summary><div class="chips">' + sh + '</div></details>';
+        '<details class="more"' + (it.share !== 100 || (pr && pr.lines.length > 1) ? " open" : "") + '><summary>' + (pr && pr.lines.length > 1 ? "This producer makes " + pr.lines.length + " item lines. How often do you get yours?" + (ln ? " (tests: the first line comes on about 87% of taps, the others share the rest)" : "") : "Does this producer also make other items?") + '</summary><div class="chips">' + sh + '</div></details>';
       box.appendChild(c);
     });
   }
@@ -639,7 +648,7 @@ footer a { color: var(--accent); }
     const v = Number(el.dataset.v);
     switch (act) {
       case "lv": it.level = v; break;
-      case "line": if (it.line !== v) it.board = {}; it.line = v; it.target = Math.min(it.target, maxTarget(it)); Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; }); break;
+      case "line": if (it.line !== v) it.board = {}; it.line = v; it.share = defaultShare(it); it.target = Math.min(it.target, maxTarget(it)); Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; }); break;
       case "t": it.target = clamp(it.target + v, 2, maxTarget(it)); Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; }); break;
       case "q": it.qty = clamp(it.qty + v, 1, 9); break;
       case "tile": it.board[v] = (it.board[v] || 0) + 1; break;
@@ -691,8 +700,7 @@ footer a { color: var(--accent); }
       const pr = prodOf(it);
       it.line = pr && pr.lines.length === 1 ? 0 : null;
       if (it.level > maxLevel(it)) it.level = maxLevel(it);
-      if (pr && pr.lines.length > 1 && it.share === 100) it.share = 85;
-      if (pr && pr.lines.length === 1) it.share = 100;
+      it.share = defaultShare(it);
       it.target = Math.min(it.target, maxTarget(it));
       Object.keys(it.board).forEach((k) => { if (+k > it.target) delete it.board[k]; });
       state.pin = null; update(true);

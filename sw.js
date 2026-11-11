@@ -1,6 +1,6 @@
 // Offline support: keeps the app files on the device and serves them when there is no connection.
 // Raise VERSION whenever any file changes, so phones pick up the new files.
-const VERSION = "mec-v1.7";
+const VERSION = "mec-v1.8";
 const FILES = [
   "./",
   "./index.html",
